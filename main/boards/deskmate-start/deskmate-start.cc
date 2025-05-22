@@ -5,6 +5,7 @@
 #include "button.h"
 #include "config.h"
 #include "iot/thing_manager.h"
+#include "power_manager.h"
 #include "sdkconfig.h"
 
 #include <wifi_station.h>
@@ -49,8 +50,8 @@ public:
 
         DisplayLockGuard lock(this);
         // 由于屏幕是圆的，所以状态栏需要增加左右内边距
-        lv_obj_set_style_pad_left(status_bar_, LV_HOR_RES * 0.33, 0);
-        lv_obj_set_style_pad_right(status_bar_, LV_HOR_RES * 0.33, 0);
+        lv_obj_set_style_pad_left(status_bar_, LV_HOR_RES * 0.13, 0);
+        lv_obj_set_style_pad_right(status_bar_, LV_HOR_RES * 0.13, 0);
     }
 };
 
@@ -60,6 +61,7 @@ private:
     Button boot_button_;
     Button key_button_;
     Display* display_;
+    PowerManager* power_manager_;
 
     adc_oneshot_unit_handle_t adc1_handle;
     adc_cali_handle_t adc1_cali_handle;
@@ -67,6 +69,13 @@ private:
     bool key_long_pressed = false;
     int64_t last_key_press_time = 0;
     static const int64_t LONG_PRESS_TIMEOUT_US = 5 * 1000000ULL;
+
+    
+    void InitializePowerManager() {
+        power_manager_ =
+            // new PowerManager(POWER_CHARGE_DETECT_PIN, POWER_ADC_UNIT, POWER_ADC_CHANNEL);
+            new PowerManager(POWER_CHARGE_DETECT_PIN);
+    }
 
     void InitializeI2c() {
         // Initialize I2C peripheral
@@ -86,35 +95,35 @@ private:
     }
 
     
-    void InitializeADC() {
-        adc_oneshot_unit_init_cfg_t init_config1 = {
-            .unit_id = ADC_UNIT_1
-        };
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+//     void InitializeADC() {
+//         adc_oneshot_unit_init_cfg_t init_config1 = {
+//             .unit_id = ADC_UNIT_1
+//         };
+//         ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
 
-        adc_oneshot_chan_cfg_t chan_config = {
-            .atten = ADC_ATTEN,
-            .bitwidth = ADC_WIDTH,
-        };
-        ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, VBAT_ADC_CHANNEL, &chan_config));
+//         adc_oneshot_chan_cfg_t chan_config = {
+//             .atten = ADC_ATTEN,
+//             .bitwidth = ADC_WIDTH,
+//         };
+//         ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, VBAT_ADC_CHANNEL, &chan_config));
 
-        adc_cali_handle_t handle = NULL;
-        esp_err_t ret = ESP_FAIL;
+//         adc_cali_handle_t handle = NULL;
+//         esp_err_t ret = ESP_FAIL;
 
-#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
-        adc_cali_curve_fitting_config_t cali_config = {
-            .unit_id = ADC_UNIT_1,
-            .atten = ADC_ATTEN,
-            .bitwidth = ADC_WIDTH,
-        };
-        ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
-        if (ret == ESP_OK) {
-            do_calibration = true;
-            adc1_cali_handle = handle;
-            ESP_LOGI(TAG, "ADC Curve Fitting calibration succeeded");
-        }
-#endif // ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
-    }
+// #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+//         adc_cali_curve_fitting_config_t cali_config = {
+//             .unit_id = ADC_UNIT_1,
+//             .atten = ADC_ATTEN,
+//             .bitwidth = ADC_WIDTH,
+//         };
+//         ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
+//         if (ret == ESP_OK) {
+//             do_calibration = true;
+//             adc1_cali_handle = handle;
+//             ESP_LOGI(TAG, "ADC Curve Fitting calibration succeeded");
+//         }
+// #endif // ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+//     }
 
     // SPI初始化
     void InitializeSpi() {
@@ -130,8 +139,10 @@ private:
 
         ESP_LOGI(TAG, "Install panel IO");
         esp_lcd_panel_io_handle_t io_handle = NULL;
+
         esp_lcd_panel_io_spi_config_t io_config = GC9A01_PANEL_IO_SPI_CONFIG(DISPLAY_SPI_CS_PIN, DISPLAY_SPI_DC_PIN, NULL, NULL);
         io_config.pclk_hz = DISPLAY_SPI_SCLK_HZ;
+        io_config.cs_gpio_num = DISPLAY_SPI_CS_PIN;
         ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI3_HOST, &io_config, &io_handle));
     
         ESP_LOGI(TAG, "Install GC9A01 panel driver");
@@ -251,6 +262,7 @@ private:
         thing_manager.AddThing(iot::CreateThing("Speaker"));
         thing_manager.AddThing(iot::CreateThing("Battery"));
         thing_manager.AddThing(iot::CreateThing("Screen"));   
+        thing_manager.AddThing(iot::CreateThing("DeskmateController"));
     }
 
     void BlinkGreenFor5s() {
@@ -282,17 +294,18 @@ private:
 public:
     DeskmateStart() : boot_button_(BOOT_BUTTON_GPIO), key_button_(KEY_BUTTON_GPIO, true) {
         InitializePowerCtl();
-        InitializeADC();
+        // InitializeADC();
         InitializeI2c();
         InitializeSpi();
         InitializeGc9a01Display();
         InitializeButtons();
         InitializeIot();
         GetBacklight()->RestoreBrightness();
+        InitializePowerManager();
     }
 
     virtual Led* GetLed() override {
-        static CircularStrip led(LED_PIN, 16);
+        static CircularStrip led(LED_PIN, 18);
         return &led;
     }
 
@@ -301,8 +314,11 @@ public:
     }
     
     virtual Backlight* GetBacklight() override {
-        static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
-        return &backlight;
+        if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
+            static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
+            return &backlight;
+        }
+        return nullptr;
     }
 
     virtual AudioCodec* GetAudioCodec() override {
@@ -313,33 +329,40 @@ public:
         return &audio_codec;
     }
 
-    virtual bool GetBatteryLevel(int &level, bool &charging, bool &discharging) {
-        if (!adc1_handle) {
-            InitializeADC();
-        }
+    // virtual bool GetBatteryLevel(int &level, bool &charging, bool &discharging) {
+    //     if (!adc1_handle) {
+    //         InitializeADC();
+    //     }
 
-        int raw_value = 0;
-        int voltage = 0;
+    //     int raw_value = 0;
+    //     int voltage = 0;
 
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, VBAT_ADC_CHANNEL, &raw_value));
+    //     ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, VBAT_ADC_CHANNEL, &raw_value));
 
-        if (do_calibration) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, raw_value, &voltage));
-            voltage = voltage * 3 / 2; // compensate for voltage divider
-            ESP_LOGI(TAG, "Calibrated voltage: %d mV", voltage);
-        } else {
-            ESP_LOGI(TAG, "Raw ADC value: %d", raw_value);
-            voltage = raw_value;
-        }
+    //     if (do_calibration) {
+    //         ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_handle, raw_value, &voltage));
+    //         voltage = voltage * 3 / 2; // compensate for voltage divider
+    //         ESP_LOGI(TAG, "Calibrated voltage: %d mV", voltage);
+    //     } else {
+    //         ESP_LOGI(TAG, "Raw ADC value: %d", raw_value);
+    //         voltage = raw_value;
+    //     }
 
-        voltage = voltage < EMPTY_BATTERY_VOLTAGE ? EMPTY_BATTERY_VOLTAGE : voltage;
-        voltage = voltage > FULL_BATTERY_VOLTAGE ? FULL_BATTERY_VOLTAGE : voltage;
+    //     voltage = voltage < EMPTY_BATTERY_VOLTAGE ? EMPTY_BATTERY_VOLTAGE : voltage;
+    //     voltage = voltage > FULL_BATTERY_VOLTAGE ? FULL_BATTERY_VOLTAGE : voltage;
 
-        // 计算电量百分比
-        level = (voltage - EMPTY_BATTERY_VOLTAGE) * 100 / (FULL_BATTERY_VOLTAGE - EMPTY_BATTERY_VOLTAGE);
+    //     // 计算电量百分比
+    //     level = (voltage - EMPTY_BATTERY_VOLTAGE) * 100 / (FULL_BATTERY_VOLTAGE - EMPTY_BATTERY_VOLTAGE);
 
-        charging = gpio_get_level(MCU_VCC_CTL);
-        ESP_LOGI(TAG, "Battery Level: %d%%, Charging: %s", level, charging ? "Yes" : "No");
+    //     charging = gpio_get_level(MCU_VCC_CTL);
+    //     ESP_LOGI(TAG, "Battery Level: %d%%, Charging: %s", level, charging ? "Yes" : "No");
+    //     return true;
+    // }
+
+    virtual bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
+        charging = power_manager_->IsCharging();
+        discharging = !charging;
+        level = power_manager_->GetBatteryLevel();
         return true;
     }
 };

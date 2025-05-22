@@ -3,12 +3,12 @@
 
 #include <driver/gpio.h>
 
-#define AUDIO_INPUT_SAMPLE_RATE  16000
-#define AUDIO_OUTPUT_SAMPLE_RATE 16000
+#define AUDIO_INPUT_SAMPLE_RATE 24000
+#define AUDIO_OUTPUT_SAMPLE_RATE 24000
 
 #define AUDIO_INPUT_REFERENCE    false
 
-#define AUDIO_I2S_GPIO_MCLK      GPIO_NUM_8
+#define AUDIO_I2S_GPIO_MCLK      GPIO_NUM_38 // 这个引脚不接也可以用?
 #define AUDIO_I2S_GPIO_WS        GPIO_NUM_17
 #define AUDIO_I2S_GPIO_BCLK      GPIO_NUM_16
 #define AUDIO_I2S_GPIO_DIN       GPIO_NUM_15
@@ -23,7 +23,9 @@
 #define KEY_BUTTON_GPIO          GPIO_NUM_12
 #define LED_PIN                  GPIO_NUM_11
 
+// 电池管理
 #define VBAT_ADC_CHANNEL         ADC_CHANNEL_9  // S3: IO10
+#define POWER_CHARGE_DETECT_PIN  GPIO_NUM_10     // S3: IO10
 #define MCU_VCC_CTL              GPIO_NUM_4     // set 1 to power on MCU
 #define PERP_VCC_CTL             GPIO_NUM_6     // set 1 to power on peripherals
 
@@ -31,6 +33,15 @@
 #define ADC_WIDTH                ADC_BITWIDTH_DEFAULT
 #define FULL_BATTERY_VOLTAGE     4100
 #define EMPTY_BATTERY_VOLTAGE    3200
+
+// 舵机
+
+#define HEAD_PITCH_PIN GPIO_NUM_13
+#define BODY_SWING_PIN GPIO_NUM_7
+#define LEFT_ARM_ROLL_PIN GPIO_NUM_42
+#define LEFT_ARM_PITCH_PIN GPIO_NUM_8
+#define RIGHT_ARM_ROLL_PIN GPIO_NUM_9
+#define RIGHT_ARM_PITCH_PIN GPIO_NUM_3
 
 // LCD 显示器
 
@@ -50,7 +61,7 @@
 #define DISPLAY_SPI_MOSI_PIN    GPIO_NUM_48
 #define DISPLAY_SPI_DC_PIN      GPIO_NUM_47
 #define DISPLAY_SPI_RESET_PIN   GPIO_NUM_21
-#define DISPLAY_SPI_CS_PIN      GPIO_NUM_13
+#define DISPLAY_SPI_CS_PIN      GPIO_NUM_NC
 
 #define DISPLAY_SPI_SCLK_HZ     (40 * 1000 * 1000)
 
